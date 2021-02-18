@@ -1,5 +1,6 @@
 import com.github.tomakehurst.wiremock.http.Fault
 import com.github.tomakehurst.wiremock.junit.WireMockRule
+import groovyx.net.http.HttpResponseDecorator
 import groovyx.net.http.RESTClient
 
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
@@ -18,13 +19,28 @@ class ErrorTest {
 
     @Test
     void wireMockFault() {
-        wireMockRule.stubFor(get(urlEqualTo("/fault"))
+        wireMockRule.stubFor(post(urlEqualTo("/fault"))
             .willReturn(aResponse().withFault(Fault.EMPTY_RESPONSE))
         )
 
         RESTClient restClient = new RESTClient("http://localhost:8080")
-        def response = restClient.get(path: "/fault")
+        def response = restClient.post(path: "/fault")
 
         assert true
+    }
+
+    @Test
+    void wireMockSuccess() {
+        wireMockRule.stubFor(get(urlEqualTo("/success"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withBody("Hello World")
+                )
+        )
+
+        RESTClient restClient = new RESTClient("http://localhost:8080")
+        def response = restClient.get(path: "/success")
+
+        assert response.status == 200
     }
 }
