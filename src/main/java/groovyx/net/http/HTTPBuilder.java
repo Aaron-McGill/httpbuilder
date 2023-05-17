@@ -25,13 +25,11 @@ import static groovyx.net.http.URIBuilder.convertToURI;
 import groovy.lang.Closure;
 
 import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
 import java.io.Closeable;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.Reader;
 import java.io.StringReader;
-import java.io.StringWriter;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URL;
@@ -42,10 +40,10 @@ import java.security.UnrecoverableKeyException;
 import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
 import java.util.Arrays;
-import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
+import org.apache.commons.io.IOUtils;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.http.Header;
@@ -54,10 +52,8 @@ import org.apache.http.HttpEntityEnclosingRequest;
 import org.apache.http.HttpHost;
 import org.apache.http.HttpResponse;
 import org.apache.http.client.ClientProtocolException;
-import org.apache.http.client.HttpRequestRetryHandler;
 import org.apache.http.client.ResponseHandler;
 import org.apache.http.client.config.CookieSpecs;
-import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.client.methods.HttpRequestBase;
@@ -75,21 +71,13 @@ import org.apache.http.conn.ssl.SSLSocketFactory;
 import org.apache.http.conn.ssl.TrustStrategy;
 import org.apache.http.conn.util.PublicSuffixMatcherLoader;
 import org.apache.http.cookie.*;
-import org.apache.http.cookie.params.CookieSpecPNames;
 import org.apache.http.client.HttpClient;
 import org.apache.http.impl.NoConnectionReuseStrategy;
-import org.apache.http.impl.client.AbstractHttpClient;
-import org.apache.http.impl.client.DefaultHttpClient;
-import org.apache.http.impl.client.DefaultHttpRequestRetryHandler;
 import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.impl.conn.PoolingHttpClientConnectionManager;
 import org.apache.http.impl.cookie.DefaultCookieSpecProvider;
-import org.apache.http.impl.cookie.IgnoreSpecProvider;
-import org.apache.http.params.BasicHttpParams;
-import org.apache.http.params.HttpParams;
 import org.apache.http.protocol.HttpContext;
 import org.apache.http.ssl.SSLContexts;
-import org.codehaus.groovy.runtime.DefaultGroovyMethods;
 import org.codehaus.groovy.runtime.MethodClosure;
 
 import javax.net.ssl.HostnameVerifier;
@@ -195,11 +183,10 @@ import javax.net.ssl.HostnameVerifier;
  *
  * @author <a href='mailto:tomstrummer+httpbuilder@gmail.com'>Tom Nichols</a>
  */
-public class HTTPBuilder {
+abstract public class HTTPBuilder {
 
     private HttpClient client;
     protected URIBuilder defaultURI = null;
-    protected AuthConfig auth = new AuthConfig( this );
 
     protected final Log log = LogFactory.getLog( getClass() );
 
@@ -219,8 +206,7 @@ public class HTTPBuilder {
      * Creates a new instance with a <code>null</code> default URI.
      */
     public HTTPBuilder() {
-        setContentEncoding( ContentEncoding.Type.GZIP,
-                ContentEncoding.Type.DEFLATE );
+        getClient();
     }
 
     /**
@@ -635,14 +621,12 @@ public class HTTPBuilder {
         try {
             //If response is streaming, buffer it in a byte array:
             if ( parsedData instanceof InputStream ) {
-                ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-                DefaultGroovyMethods.leftShift( buffer, (InputStream)parsedData );
-                parsedData = new ByteArrayInputStream( buffer.toByteArray() );
+                InputStream is = (InputStream)parsedData;
+                parsedData = new ByteArrayInputStream( is.readAllBytes() );
             }
             else if ( parsedData instanceof Reader ) {
-                StringWriter buffer = new StringWriter();
-                DefaultGroovyMethods.leftShift( buffer, (Reader)parsedData );
-                parsedData = new StringReader( buffer.toString() );
+                Reader r = (Reader)parsedData;
+                parsedData = new StringReader( IOUtils.toString(r) );
             }
             else if ( parsedData instanceof Closeable )
                 log.warn( "Parsed data is streaming, but will be accessible after " +
@@ -785,23 +769,6 @@ public class HTTPBuilder {
     }
 
     /**
-     * Set acceptable request and response content-encodings.
-     * @see ContentEncodingRegistry
-     * @param encodings each Object should be either a
-     * {@link ContentEncoding.Type} value, or a <code>content-encoding</code>
-     * string that is known by the {@link ContentEncodingRegistry}
-     */
-    public void setContentEncoding( Object... encodings ) {
-	  	HttpClient client = getClient();
-		if ( client instanceof AbstractHttpClient ) {
-          this.contentEncodingHandler.setInterceptors( (AbstractHttpClient)client, encodings );
-		} else {
-		  throw new IllegalStateException("The HttpClient is not an AbstractHttpClient!");
-		}
-
-    }
-
-    /**
      * Set the default URI used for requests that do not explicitly take a
      * <code>uri</code> param.
      * @param uri either a {@link URL}, {@link URI} or object whose
@@ -858,7 +825,7 @@ public class HTTPBuilder {
             CookieSpecProvider cookieSpecProvider = new DefaultCookieSpecProvider(
                     null,
                     PublicSuffixMatcherLoader.getDefault(),
-                    (String[]) Arrays.asList("EEE, dd-MMM-yyyy HH:mm:ss z", "EEE, dd MMM yyyy HH:mm:ss z").toArray(),
+                    Arrays.asList("EEE, dd-MMM-yyyy HH:mm:ss z", "EEE, dd MMM yyyy HH:mm:ss z").toArray(new String[0]),
                     false
             );
             Lookup<CookieSpecProvider> cookieSpecRegistry = RegistryBuilder.<CookieSpecProvider>create()//
@@ -883,7 +850,8 @@ public class HTTPBuilder {
                 return false;
             });
 
-
+            contentEncodingHandler.setInterceptors(httpClientBuilder, ContentEncoding.Type.GZIP,
+                    ContentEncoding.Type.DEFLATE );
 
             PoolingHttpClientConnectionManager connMgr = createConnectionManager();
             httpClientBuilder.setConnectionManager(connMgr);
@@ -926,23 +894,6 @@ public class HTTPBuilder {
      */
     protected HttpClient createClient( HttpClientBuilder httpClientBuilder ) {
         return httpClientBuilder.build();
-    }
-
-    /**
-     * Used to access the {@link AuthConfig} handler used to configure common
-     * authentication mechanism.  Example:
-     * <pre>builder.auth.basic( 'myUser', 'somePassword' )</pre>
-     * @return
-     */
-    public AuthConfig getAuth() { return this.auth; }
-
-    /**
-     * Set an alternative {@link AuthConfig} implementation to handle
-     * authorization.
-     * @param ac instance to use.
-     */
-    public void setAuthConfig( AuthConfig ac ) {
-        this.auth = ac;
     }
 
     /**

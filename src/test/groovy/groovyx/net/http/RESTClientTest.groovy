@@ -1,167 +1,164 @@
 package groovyx.net.http
 
-import org.junit.Ignore
-import org.junit.Test
-import org.junit.Before
-import junit.framework.Assert
+import com.github.tomakehurst.wiremock.junit.WireMockRule
+import groovy.json.JsonBuilder
+import org.junit.Rule
 import groovy.util.slurpersupport.GPathResult
-import org.apache.http.params.HttpConnectionParams
+import spock.lang.Shared
+import spock.lang.Specification
+import spock.lang.Unroll
+
+import static com.github.tomakehurst.wiremock.client.WireMock.aResponse
+import static com.github.tomakehurst.wiremock.client.WireMock.get
+import static com.github.tomakehurst.wiremock.client.WireMock.head
+import static com.github.tomakehurst.wiremock.client.WireMock.delete
+import static com.github.tomakehurst.wiremock.client.WireMock.post
+import static com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo
+import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options
 import static groovyx.net.http.ContentType.*
 
 /**
  * @author tnichols
  *
  */
-public class RESTClientTest {
+class RESTClientTest extends Specification {
 
-    def twitter = null
-    static postID = null
-    def userID = System.getProperty('twitter.user')
+    @Rule
+    public WireMockRule wireMockRule = new WireMockRule(options().port(8089))
 
-    @Before public void setUp() {
-        twitter = new RESTClient( 'https://api.twitter.com/1.1/statuses/' )
-        twitter.auth.oauth System.getProperty('twitter.oauth.consumerKey'),
-                System.getProperty('twitter.oauth.consumerSecret'),
-                System.getProperty('twitter.oauth.accessToken'),
-                System.getProperty('twitter.oauth.secretToken')
-        twitter.contentType = ContentType.JSON
-        HttpConnectionParams.setSoTimeout twitter.client.params, 15000
+    @Shared
+    RESTClient restClient
+
+    def setupSpec() {
+        restClient = new RESTClient("http://localhost:8089")
     }
 
-    @Test public void testConstructors() {
-        twitter = new RESTClient()
-        assert twitter.contentType == ContentType.ANY
+    @Unroll
+    def "Test constructors: #scenario" () {
+        expect: "Content type is correct"
+        client.contentType == expectedContentType
 
-        twitter = new RESTClient( 'http://www.google.com', ContentType.XML )
-        assert twitter.contentType == ContentType.XML
+        where:
+        scenario                            | client                                            | expectedContentType
+        "Call empty constructor"            | new RESTClient()                                  | ANY
+        "Call constructor with custom type" | new RESTClient( 'http://www.google.com', XML )    | XML
     }
 
-    @Test public void testHead() {
-        try { // twitter sends a 302 Found to /statuses, which then returns a 406...  What??
-            twitter.head path : 'asdf'
-            assert false : 'Expected exception'
-        }
-        // test the exception class:
-        catch( ex ) { assert ex.response.status == 404 }
+    def "HEAD results in error" () {
+        given: "Mock"
+        wireMockRule.stubFor(head(urlEqualTo("/fault"))
+                .willReturn(aResponse().withStatus(404))
+        )
 
-        assert twitter.head( path : 'home_timeline.json' ).status == 200
+        when: "Perform HEAD"
+        restClient.head(path: "/fault")
+
+        then: "Exception is thrown"
+        HttpResponseException e = thrown HttpResponseException
+        e.statusCode == 404
     }
 
-    @Test public void testGet() {
-        // testing w/ content-type other than default:
-        /* Note also that Twitter doesn't really care about the "Accept" header
-           anyway, it wants you to put it in the URL, i.e. something.xml or
-           something.json.  But we're still passing the content-type so that
-           the parser knows how it should _attempt_ to parse the response.  */
-        def resp = twitter.get( path : 'home_timeline.json' )
-        assert resp.status == 200
-        assert resp.headers.Server == "tfe"
-        assert resp.headers.Server == resp.headers['Server'].value
-        assert resp.contentType == JSON.toString()
-        assert ( resp.data instanceof List )
-        assert resp.data.status.size() > 0
-    }
+    def "HEAD is successful" () {
+        given: "Mock"
+        wireMockRule.stubFor(head(urlEqualTo("/success"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                )
+        )
 
-    @Test public void testPost() {
-        def msg = "RESTClient unit test was run on ${new Date()}"
+        when: "Perform HEAD"
+        def response = restClient.head(path: "/success")
 
-        def resp = twitter.post(
-                path : 'update.json',
-                body : [ status:msg, source:'httpbuilder' ],
-                requestContentType : URLENC )
-
-        assert resp.status == 200
-        assert resp.headers.Status
-        assert resp.data.text == msg
-        assert resp.data.user.screen_name == userID
-
-        RESTClientTest.postID = resp.data.id
-        println "Updated post; ID: ${postID}"
-    }
-
-    @Test public void testDelete() {
-        Thread.sleep 10000
-        // delete the test message.
-        if ( ! postID ) throw new IllegalStateException( "No post ID from testPost()" )
-        println "Deleting post ID : $postID"
-        def resp = twitter.delete( path : "destroy/${postID}.json" )
-        assert resp.status == 200
-        assert resp.data.id == postID
-        println "Test tweet ID ${resp.data.id} was deleted."
-    }
-
-    @Ignore
-    @Test public void testOptions() {
-        // get a message ID then test which ways I can delete it:
-        def resp = twitter.get( uri: 'http://twitter.com/statuses/user_timeline/httpbuilder.json' )
-
-        def id = resp.data[0].id
-        assert id
-
-        // This does not seem to be supported by the Twitter API..
-/*      resp = twitter.options( path : "destroy/${id}.json" )
-        println "OPTIONS response : ${resp.headers.Allow}"
-        assert resp.headers.Allow
-        */
-    }
-
-    @Test public void testDefaultHandlers() {
-        def resp = twitter.get( path : 'user_timeline.json',
-            query : [screen_name :'httpbuilder',count:2] )
-        assert resp.data.size() == 2
-
-        try {
-            resp = twitter.get([:])
-            assert false : "exception should be thrown"
-        }
-        catch ( HttpResponseException ex ) {
-            assert ex.response.status == 404
+        then: "Request is successful"
+        verifyAll {
+            response.status == 200
+            !response.data
         }
     }
 
-    @Test public void testQueryParameters() {
-        twitter.contentType = 'text/javascript'
-        twitter.headers = null
-        def resp = twitter.get(
-            path : 'user_timeline.json',
-            queryString : 'count=5&trim_user=1',
-            query : [screen_name :'httpbuilder'] )
-        assert resp.data.size() == 5
-    }
+    def "GET is successful" () {
+        given: "Mock"
+        wireMockRule.stubFor(get(urlEqualTo("/success"))
+                .willReturn(aResponse()
+                        .withStatus(200)
+                        .withBody(new JsonBuilder(message: "Hello World").toString())
+                )
+        )
 
-    @Test public void testUnknownNamedParams() {
-        try {
-            twitter.get( Path : 'user_timeline.json',
-                query : [screen_name :'httpbuilder',count:2] )
-            assert false : "exception should be thrown"
+        when: "Perform GET"
+        def response = restClient.get(path: "/success", contentType: JSON)
+
+        then: "Request is successful"
+        verifyAll {
+            response.status == 200
+            response.data instanceof Map
+            response.data.message == "Hello World"
         }
-        catch ( IllegalArgumentException ex ) { /* Expected exception */ }
     }
 
-    @Test public void testJSONPost() {
-        def http = new RESTClient("http://restmirror.appspot.com/")
-        def resp = http.post(
-            path:'/', contentType:'text/javascript',
-            body: [name: 'bob', title: 'construction worker'] )
+    def "DELETE is successful" () {
+        given: "Mock"
+        wireMockRule.stubFor(delete(urlEqualTo("/success"))
+                .willReturn(aResponse()
+                        .withStatus(204)
+                )
+        )
 
-        println "JSON POST Success: ${resp.statusLine}"
-        assert resp.data instanceof Map
-        assert resp.data.name == 'bob'
+        when: "Perform GET"
+        def response = restClient.delete(path: "/success")
+
+        then: "Request is successful"
+        response.status == 204
     }
 
-    @Test public void testXMLPost() {
-        def http = new RESTClient("http://restmirror.appspot.com/")
+    def "Test unknown named parameters" () {
+        when: "Provide invalid value in GET request"
+        restClient.get(invalid: 2)
 
+        then: "Exception is thrown"
+        thrown IllegalArgumentException
+    }
+
+    def "Send JSON POST request" () {
+        given: "Mock"
+        wireMockRule.stubFor(post(urlEqualTo("/success"))
+                .willReturn(aResponse()
+                        .withStatus(201)
+                        .withBody(new JsonBuilder(result: "success").toPrettyString()))
+        )
+
+        when: "Send a POST request"
+        def response = restClient.post(path: "/success", contentType: JSON, body: [input: "value"])
+
+        then: "Request is successful"
+        verifyAll {
+            response.status == 201
+            response.data instanceof Map
+            response.data.result == "success"
+        }
+    }
+
+    def "Send XML POST request" () {
+        given: "Mock"
+        wireMockRule.stubFor(post(urlEqualTo("/success"))
+                .willReturn(aResponse()
+                        .withStatus(201)
+                        .withBody("<person name='bob' title='builder'></person>")))
+
+        when: "Perform POST"
         def postBody = {
             person( name: 'bob', title: 'builder' )
         }
+        def response = restClient.post(path: "/success", contentType: XML, body: postBody)
 
-        def resp = http.post(   path:'/', contentType: XML, body: postBody )
 
-        println "XML POST Success: ${resp.statusLine}"
-        assert resp.data instanceof GPathResult
-        assert resp.data.name() == 'person'
-        assert resp.data.@name == 'bob'
-        assert resp.data.@title == 'builder'
+        then: "Request is successful"
+        verifyAll {
+            response.status == 201
+            response.data instanceof GPathResult
+            response.data.name() == 'person'
+            response.data.@name == 'bob'
+            response.data.@title == 'builder'
+        }
     }
 }

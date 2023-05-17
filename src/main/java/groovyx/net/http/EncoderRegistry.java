@@ -49,6 +49,7 @@ import net.sf.json.JSONArray;
 import net.sf.json.JSONObject;
 import net.sf.json.groovy.JsonGroovyBuilder;
 
+import org.apache.commons.io.IOUtils;
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpEntityEnclosingRequest;
 import org.apache.http.NameValuePair;
@@ -56,7 +57,6 @@ import org.apache.http.client.entity.UrlEncodedFormEntity;
 import org.apache.http.entity.InputStreamEntity;
 import org.apache.http.entity.StringEntity;
 import org.apache.http.message.BasicNameValuePair;
-import org.codehaus.groovy.runtime.DefaultGroovyMethods;
 import org.codehaus.groovy.runtime.MethodClosure;
 
 
@@ -186,8 +186,8 @@ public class EncoderRegistry implements Iterable<Map.Entry<String,Closure>> {
             data = new BufferedReader( (Reader)data );
         if ( data instanceof BufferedReader ) {
             StringWriter out = new StringWriter();
-            DefaultGroovyMethods.leftShift( out, (BufferedReader)data );
-
+            BufferedReader r = (BufferedReader)data;
+            out.write(IOUtils.toString(r));
             data = out;
         }
         // if data is a String, we are already covered.

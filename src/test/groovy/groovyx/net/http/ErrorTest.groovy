@@ -1,36 +1,41 @@
+package groovyx.net.http
+
 import com.github.tomakehurst.wiremock.http.Fault
 import com.github.tomakehurst.wiremock.junit.WireMockRule
-import groovyx.net.http.HttpResponseDecorator
-import groovyx.net.http.RESTClient
+import spock.lang.Shared
+import spock.lang.Specification
 
 import static com.github.tomakehurst.wiremock.client.WireMock.*;
+import static com.github.tomakehurst.wiremock.core.WireMockConfiguration.options;
 import org.junit.Rule
-import org.junit.Test
 
-class ErrorTest {
+class ErrorTest extends Specification {
 
     @Rule
-    public WireMockRule wireMockRule = new WireMockRule()
+    public WireMockRule wireMockRule = new WireMockRule(options().port(8089))
 
-    @Test
-    void firstTest() {
-        assert true
+    @Shared
+    RESTClient restClient
+
+    def setupSpec() {
+        restClient = new RESTClient("http://localhost:8089")
     }
 
-    @Test
-    void wireMockFault() {
+    def "Fault" () {
+        given: "Mock"
         wireMockRule.stubFor(post(urlEqualTo("/fault"))
-            .willReturn(aResponse().withFault(Fault.EMPTY_RESPONSE))
+                .willReturn(aResponse().withFault(Fault.EMPTY_RESPONSE))
         )
 
-        RESTClient restClient = new RESTClient("http://localhost:8080")
-        def response = restClient.post(path: "/fault")
+        when: "GET"
+        restClient.post(path: "/fault")
 
-        assert true
+        then: "Exception thrown"
+        thrown Exception
     }
 
-    @Test
-    void wireMockSuccess() {
+    def "Success" () {
+        given: "Mock"
         wireMockRule.stubFor(get(urlEqualTo("/success"))
                 .willReturn(aResponse()
                         .withStatus(200)
@@ -38,9 +43,10 @@ class ErrorTest {
                 )
         )
 
-        RESTClient restClient = new RESTClient("http://localhost:8080")
+        when: "GET"
         def response = restClient.get(path: "/success")
 
-        assert response.status == 200
+        then: "Success"
+        response.status == 200
     }
 }

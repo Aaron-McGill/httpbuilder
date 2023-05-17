@@ -3,14 +3,14 @@ package groovyx.net.http
 import org.apache.http.ProtocolVersion
 import org.apache.http.entity.StringEntity
 import org.apache.http.message.BasicHttpResponse
-import org.junit.Testimport java.io.StringReaderimport java.io.ByteArrayInputStream
-import static groovyx.net.http.ContentType.*
+import org.junit.Test
+
 /**
  * @author tnichols
  */
-public class RegistryTest {
+class RegistryTest {
 
-    @Test public void testParserRegistry() {
+    @Test void testParserRegistry() {
         def reg = new ParserRegistry();
         
         assert reg.defaultParser
@@ -30,7 +30,7 @@ public class RegistryTest {
         assert newParser.is( reg.defaultParser )
     }
 
-    @Test public void testEncoderAccessors() {
+    @Test void testEncoderAccessors() {
         def reg = new EncoderRegistry();
         
         reg.each { assert it.key && it.value }
@@ -45,7 +45,7 @@ public class RegistryTest {
         assert reg."application/xml".is( newEnc )
     }
     
-    @Test public void testXMLEncoder() {
+    @Test void testXMLEncoder() {
         def reg = new EncoderRegistry();
         
         def entity = reg.encodeXML( {
@@ -66,7 +66,7 @@ public class RegistryTest {
         assert entity.content.text == "<xml AAA='aaa'><one>something</one><two>two</two></xml>"
     }
     
-    @Test public void testCharsetAndText() {
+    @Test void testCharsetAndText() {
         def reg = new EncoderRegistry( charset: "ISO-8859-1" );
         
         def entity = reg.encodeText( { out ->
@@ -90,7 +90,7 @@ public class RegistryTest {
         assert entity.content.getText('ISO-8859-1') == "This is a test 3\nMore text"
     }
     
-    @Test public void testStream() {
+    @Test void testStream() {
         def reg = new EncoderRegistry();
         
         def data = [ 0x0, 0x1, 0x2 ] as byte[]
@@ -125,7 +125,7 @@ public class RegistryTest {
         assert result.toByteArray() == data
     }
     
-    @Test public void testJSONEncoder() {
+    @Test void testJSONEncoder() {
         def reg = new EncoderRegistry();
         
         def entity = reg.encodeJSON( [
@@ -161,7 +161,7 @@ public class RegistryTest {
         assert entity.content.text == "['first','second',3,{'map':4}]"
     }
     
-    @Test public void testFormEncoder() {
+    @Test void testFormEncoder() {
         def enc = new EncoderRegistry()
         
         def param1 = "p1"
@@ -175,7 +175,7 @@ public class RegistryTest {
         assert entity.content.text == "p1=goober&p2=something+else"
     }
     
-    @Test public void testFormParser() {
+    @Test void testFormParser() {
         def parser = new ParserRegistry()
 
         def entity = new StringEntity( "p1=goober&p2=something+else", "utf-8" )

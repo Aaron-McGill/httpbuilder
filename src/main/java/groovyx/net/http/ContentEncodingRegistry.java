@@ -27,7 +27,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 import org.apache.http.client.HttpClient;
-import org.apache.http.impl.client.AbstractHttpClient;
+import org.apache.http.impl.client.HttpClientBuilder;
 
 /**
  * Keeps track of available content-encoding handlers.
@@ -55,20 +55,18 @@ public class ContentEncodingRegistry {
      * which will provide transparent decoding of the given content-encoding
      * types.  This method is called by HTTPBuilder and probably should not need
      * be modified by sub-classes.
-     * @param client client on which to set the request and response interceptors
+     * @param builder builder for the HTTP client
      * @param encodings encoding name (either a {@link ContentEncoding.Type} or
      *   a <code>content-encoding</code> string.
      */
-    void setInterceptors( final AbstractHttpClient client, Object... encodings ) {
-        // remove any encoding interceptors that are already set
-        client.removeRequestInterceptorByClass( ContentEncoding.RequestInterceptor.class );
-        client.removeResponseInterceptorByClass( ContentEncoding.ResponseInterceptor.class );
-
+    void setInterceptors(final HttpClientBuilder builder, Object... encodings ) {
+        // TODO: Is this even needed with the new version of HTTPClient?
+        // Removing interceptors is no longer supported, as far as I can tell.
         for ( Object encName : encodings ) {
             ContentEncoding enc = availableEncoders.get( encName.toString() );
             if ( enc == null ) continue;
-            client.addRequestInterceptor( enc.getRequestInterceptor() );
-            client.addResponseInterceptor( enc.getResponseInterceptor() );
+            builder.addInterceptorFirst(enc.getRequestInterceptor());
+            builder.addInterceptorFirst(enc.getResponseInterceptor());
         }
     }
 }

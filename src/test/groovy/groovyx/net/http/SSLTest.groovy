@@ -18,7 +18,7 @@ public class SSLTest {
 
     @Ignore
     @Test public void testTrustedCert() {
-        def http = new HTTPBuilder( uri )
+        def http = new RESTClient( uri )
 
         def keyStore = KeyStore.getInstance( KeyStore.defaultType )
 

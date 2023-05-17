@@ -61,7 +61,7 @@ public class ServerTest {
             }
         }
         
-        def http = new HTTPBuilder( 'http://localhost:11234', TEXT )
+        def http = new RESTClient( 'http://localhost:11234', TEXT )
         http.headers = ['Content-Type':'text/xml',Accept:'text/xml']
         HttpConnectionParams.setSoTimeout( http.client.params, 10000 )
         
